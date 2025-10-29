@@ -1,0 +1,1318 @@
+[
+    {
+        "id": "8b634ea8f558e3eb",
+        "type": "tab",
+        "label": "ESP32 MQTT Dual-Device Dashboard",
+        "disabled": false,
+        "info": "Dashboard for two ESP32 devices publishing JSON to esp32/sensor_data"
+    },
+    {
+        "id": "500fb1420b84cb2d",
+        "type": "mqtt in",
+        "z": "8b634ea8f558e3eb",
+        "name": "MQTT In: esp32/sensor_data",
+        "topic": "esp32/sensor_data/khim_bro",
+        "qos": "0",
+        "datatype": "auto",
+        "broker": "d2bfe9c4a3e07cd3",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 1080,
+        "y": 400,
+        "wires": [
+            [
+                "08330c4589230b18",
+                "c1bb4121658073c5"
+            ]
+        ]
+    },
+    {
+        "id": "c1bb4121658073c5",
+        "type": "debug",
+        "z": "8b634ea8f558e3eb",
+        "name": "Raw MQTT payload",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1340,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "08330c4589230b18",
+        "type": "json",
+        "z": "8b634ea8f558e3eb",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 1330,
+        "y": 400,
+        "wires": [
+            [
+                "b41f2c55a5f5c49a"
+            ]
+        ]
+    },
+    {
+        "id": "b41f2c55a5f5c49a",
+        "type": "function",
+        "z": "8b634ea8f558e3eb",
+        "name": "Validate & Enrich",
+        "func": "// Expect: { temperature_c, ldr_raw, device_id, rssi_dbm, distance_m }\nconst p = msg.payload || {};\nconst out = {};\nout.device_id = p.device_id || \"ESP32_A1\";\n\n// Normalize Sensor Data\nconst ldr = Number(p.ldr_raw);\nconst temp = Number(p.temperature_c);\nconst rssi = Number(p.rssi_dbm);\nconst distance = Number(p.distance_m);\n\nout.ldr_raw = Number.isFinite(ldr) ? ldr : NaN;\nout.temperature_c = Number.isFinite(temp) ? temp : NaN;\n// NEW: RSSI and Distance\nout.rssi_dbm = Number.isFinite(rssi) ? rssi : NaN;\nout.distance_m = Number.isFinite(distance) ? distance : NaN;\n\nout.timestamp = new Date().toISOString();\nout.status = (Number.isFinite(out.ldr_raw) && Number.isFinite(out.temperature_c) && Number.isFinite(out.rssi_dbm)) ? \"ok\" : \"error\";\n\nmsg.payload = out;\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1550,
+        "y": 400,
+        "wires": [
+            [
+                "550195ef0ef064bb",
+                "1ae79cd2465d37cc",
+                "009560f35e33f807"
+            ]
+        ]
+    },
+    {
+        "id": "009560f35e33f807",
+        "type": "debug",
+        "z": "8b634ea8f558e3eb",
+        "name": "Parsed payload",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1800,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "1ae79cd2465d37cc",
+        "type": "ui_text",
+        "z": "8b634ea8f558e3eb",
+        "group": "3f016189113480dd",
+        "order": 1,
+        "width": 12,
+        "height": 1,
+        "name": "Status Line",
+        "label": "Status",
+        "format": "{{payload.device_id}} — {{payload.status}} — {{payload.timestamp}}",
+        "layout": "row-spread",
+        "x": 1710,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "550195ef0ef064bb",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "Route by device_id",
+        "property": "payload.device_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "ESP32_A1",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "ESP32_B2",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 3,
+        "x": 1810,
+        "y": 400,
+        "wires": [
+            [
+                "394ff5c933705ea9",
+                "2d4e0eec8b755030",
+                "dabaf28651fb7af8",
+                "843fdb11a0bb32e9"
+            ],
+            [
+                "161d507eea4fd216",
+                "3d2f6426b3f00982",
+                "5ca99116a8732c05",
+                "4fe0faad47d828b7"
+            ],
+            [
+                "5c285ba34a638e8f"
+            ]
+        ]
+    },
+    {
+        "id": "5c285ba34a638e8f",
+        "type": "ui_text",
+        "z": "8b634ea8f558e3eb",
+        "group": "3f016189113480dd",
+        "order": 2,
+        "width": 12,
+        "height": 1,
+        "name": "Unknown Device",
+        "label": "Unknown device",
+        "format": "{{payload.device_id}}",
+        "layout": "row-spread",
+        "x": 2050,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "394ff5c933705ea9",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 temp is number",
+        "property": "payload.temperature_c",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2070,
+        "y": 320,
+        "wires": [
+            [
+                "de85a5264af14e06",
+                "87044a2a5acc4456"
+            ]
+        ]
+    },
+    {
+        "id": "2d4e0eec8b755030",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 ldr is number",
+        "property": "payload.ldr_raw",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 360,
+        "wires": [
+            [
+                "26a8fb83b4aa4bb6",
+                "8710d60019b00c27"
+            ]
+        ]
+    },
+    {
+        "id": "dabaf28651fb7af8",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 rssi is number",
+        "property": "payload.rssi_dbm",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 400,
+        "wires": [
+            [
+                "49c2325072a55c4b",
+                "b9244e67f07128f8"
+            ]
+        ]
+    },
+    {
+        "id": "843fdb11a0bb32e9",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 dist is number",
+        "property": "payload.distance_m",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 440,
+        "wires": [
+            [
+                "e4e48047692af336"
+            ]
+        ]
+    },
+    {
+        "id": "161d507eea4fd216",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 temp is number",
+        "property": "payload.temperature_c",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2070,
+        "y": 520,
+        "wires": [
+            [
+                "06f97979c4e8bedb",
+                "aec78ed641608b7d"
+            ]
+        ]
+    },
+    {
+        "id": "3d2f6426b3f00982",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 ldr is number",
+        "property": "payload.ldr_raw",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 560,
+        "wires": [
+            [
+                "73c00687350ff2f7",
+                "1291e204dc1a109d"
+            ]
+        ]
+    },
+    {
+        "id": "5ca99116a8732c05",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 rssi is number",
+        "property": "payload.rssi_dbm",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 600,
+        "wires": [
+            [
+                "981b492839c03bc3",
+                "e7d04e75504f4f84"
+            ]
+        ]
+    },
+    {
+        "id": "4fe0faad47d828b7",
+        "type": "switch",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 dist is number",
+        "property": "payload.distance_m",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "istype",
+                "v": "number",
+                "vt": "number"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 2060,
+        "y": 640,
+        "wires": [
+            [
+                "0caefd461a7e702d"
+            ]
+        ]
+    },
+    {
+        "id": "de85a5264af14e06",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 gauge temp",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.temperature_c",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 300,
+        "wires": [
+            [
+                "d674d777059e5912"
+            ]
+        ]
+    },
+    {
+        "id": "87044a2a5acc4456",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 chart temp",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_A1.temperature_c",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.temperature_c",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 340,
+        "wires": [
+            [
+                "78264d01b90002cf"
+            ]
+        ]
+    },
+    {
+        "id": "26a8fb83b4aa4bb6",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 gauge ldr",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.ldr_raw",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 380,
+        "wires": [
+            [
+                "e160e33ba593b9fc"
+            ]
+        ]
+    },
+    {
+        "id": "8710d60019b00c27",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 chart ldr",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_A1.ldr_raw",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.ldr_raw",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 420,
+        "wires": [
+            [
+                "b503016807517732"
+            ]
+        ]
+    },
+    {
+        "id": "49c2325072a55c4b",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 gauge rssi",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.rssi_dbm",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 460,
+        "wires": [
+            [
+                "3ff303c4fa16d677"
+            ]
+        ]
+    },
+    {
+        "id": "b9244e67f07128f8",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 chart rssi",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_A1.rssi_dbm",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.rssi_dbm",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 500,
+        "wires": [
+            [
+                "15632b71bf699729"
+            ]
+        ]
+    },
+    {
+        "id": "e4e48047692af336",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "A1 gauge dist",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.distance_m",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 540,
+        "wires": [
+            [
+                "310f22af823b4920"
+            ]
+        ]
+    },
+    {
+        "id": "06f97979c4e8bedb",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 gauge temp",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.temperature_c",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 580,
+        "wires": [
+            [
+                "23a5cb637ce4497c"
+            ]
+        ]
+    },
+    {
+        "id": "aec78ed641608b7d",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 chart temp",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_B2.temperature_c",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.temperature_c",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 620,
+        "wires": [
+            [
+                "0c0d93ea94cd829c"
+            ]
+        ]
+    },
+    {
+        "id": "73c00687350ff2f7",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 gauge ldr",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.ldr_raw",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 660,
+        "wires": [
+            [
+                "ef4edcf73f571acb"
+            ]
+        ]
+    },
+    {
+        "id": "1291e204dc1a109d",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 chart ldr",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_B2.ldr_raw",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.ldr_raw",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 700,
+        "wires": [
+            [
+                "2f63fce2cb1a0db4"
+            ]
+        ]
+    },
+    {
+        "id": "981b492839c03bc3",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 gauge rssi",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.rssi_dbm",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 740,
+        "wires": [
+            [
+                "9845fa46ebef8983"
+            ]
+        ]
+    },
+    {
+        "id": "e7d04e75504f4f84",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 chart rssi",
+        "rules": [
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ESP32_B2.rssi_dbm",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.rssi_dbm",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 780,
+        "wires": [
+            [
+                "74766c1b4c6bb0f2"
+            ]
+        ]
+    },
+    {
+        "id": "0caefd461a7e702d",
+        "type": "change",
+        "z": "8b634ea8f558e3eb",
+        "name": "B2 gauge dist",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.distance_m",
+                "tot": "msg"
+            }
+        ],
+        "x": 2290,
+        "y": 820,
+        "wires": [
+            [
+                "7fb7b6faa3dc5d6a"
+            ]
+        ]
+    },
+    {
+        "id": "d674d777059e5912",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong Temp (°C)",
+        "group": "e20db06ea4481588",
+        "order": 1,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "A1 Temp (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "60",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "e160e33ba593b9fc",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong LDR",
+        "group": "e20db06ea4481588",
+        "order": 2,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "A1 LDR (raw)",
+        "label": "ADC",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "4095",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "3ff303c4fa16d677",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong RSSI (dBm)",
+        "group": "e20db06ea4481588",
+        "order": 3,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "A1 RSSI (dBm)",
+        "label": "dBm",
+        "format": "{{value}}",
+        "min": "-100",
+        "max": "-30",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#76b900"
+        ],
+        "seg1": "-80",
+        "seg2": "-60",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "310f22af823b4920",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong Distance (m)",
+        "group": "e20db06ea4481588",
+        "order": 4,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "A1 Distance (m)",
+        "label": "m",
+        "format": "{{value | number:1}}",
+        "min": "0",
+        "max": "100",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "5",
+        "seg2": "8",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 540,
+        "wires": []
+    },
+    {
+        "id": "78264d01b90002cf",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong Temp Chart",
+        "group": "21f17bbc2c52afa7",
+        "order": 1,
+        "width": 6,
+        "height": 5,
+        "label": "A1 Temperature (°C)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 340,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "b503016807517732",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong LDR Chart",
+        "group": "21f17bbc2c52afa7",
+        "order": 2,
+        "width": 6,
+        "height": 5,
+        "label": "A1 LDR (raw)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "15632b71bf699729",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Patcharapong RSSI Chart",
+        "group": "21f17bbc2c52afa7",
+        "order": 3,
+        "width": 6,
+        "height": 5,
+        "label": "A1 RSSI (dBm)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "-100",
+        "ymax": "-30",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 500,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "23a5cb637ce4497c",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat Temp (°C)",
+        "group": "d09fe3d7a1c1d1b5",
+        "order": 1,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "B2 Temp (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "60",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "ef4edcf73f571acb",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat LDR",
+        "group": "d09fe3d7a1c1d1b5",
+        "order": 2,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "B2 LDR (raw)",
+        "label": "ADC",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "4095",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "9845fa46ebef8983",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat RSSI (dBm)",
+        "group": "d09fe3d7a1c1d1b5",
+        "order": 3,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "B2 RSSI (dBm)",
+        "label": "dBm",
+        "format": "{{value}}",
+        "min": "-100",
+        "max": "-30",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#76b900"
+        ],
+        "seg1": "-80",
+        "seg2": "-60",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "7fb7b6faa3dc5d6a",
+        "type": "ui_gauge",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat Distance (m)",
+        "group": "d09fe3d7a1c1d1b5",
+        "order": 4,
+        "width": 3,
+        "height": 4,
+        "gtype": "donut",
+        "title": "B2 Distance (m)",
+        "label": "m",
+        "format": "{{value | number:1}}",
+        "min": "0",
+        "max": "100",
+        "colors": [
+            "#76b900",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "5",
+        "seg2": "8",
+        "diff": false,
+        "className": "",
+        "x": 2520,
+        "y": 820,
+        "wires": []
+    },
+    {
+        "id": "0c0d93ea94cd829c",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat Temp Chart",
+        "group": "9e94e817ef30a8b7",
+        "order": 1,
+        "width": 6,
+        "height": 5,
+        "label": "B2 Temperature (°C)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 620,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "2f63fce2cb1a0db4",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat LDR Chart",
+        "group": "9e94e817ef30a8b7",
+        "order": 2,
+        "width": 6,
+        "height": 5,
+        "label": "B2 LDR (raw)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 700,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "74766c1b4c6bb0f2",
+        "type": "ui_chart",
+        "z": "8b634ea8f558e3eb",
+        "name": "Peeranat RSSI Chart",
+        "group": "9e94e817ef30a8b7",
+        "order": 3,
+        "width": 6,
+        "height": 5,
+        "label": "B2 RSSI (dBm)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "-100",
+        "ymax": "-30",
+        "removeOlder": 12,
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 2520,
+        "y": 780,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d2bfe9c4a3e07cd3",
+        "type": "mqtt-broker",
+        "name": "broker.hivemq.com:1883",
+        "broker": "broker.hivemq.com",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "3f016189113480dd",
+        "type": "ui_group",
+        "name": "Status",
+        "tab": "ui_tab_main",
+        "order": 5,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "e20db06ea4481588",
+        "type": "ui_group",
+        "name": "A1 Gauges",
+        "tab": "ui_tab_main",
+        "order": 1,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "21f17bbc2c52afa7",
+        "type": "ui_group",
+        "name": "A1 Charts",
+        "tab": "ui_tab_main",
+        "order": 2,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "d09fe3d7a1c1d1b5",
+        "type": "ui_group",
+        "name": "B2 Gauges",
+        "tab": "ui_tab_main",
+        "order": 3,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "9e94e817ef30a8b7",
+        "type": "ui_group",
+        "name": "B2 Charts",
+        "tab": "ui_tab_main",
+        "order": 4,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "ui_tab_main",
+        "type": "ui_tab",
+        "name": "Smart Door Lock",
+        "icon": "lock",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "20ff8fdd239c609c",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-dashboard": "3.6.6"
+        }
+    }
+]
