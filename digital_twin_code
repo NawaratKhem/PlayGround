@@ -1,0 +1,192 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// -------------------- User Config --------------------
+#define WIFI_SSID   "coc-iot-lab"
+#define WIFI_PASS   "computing"
+
+#define MQTT_HOST   "172.19.58.228"
+#define MQTT_PORT   1883
+
+// MQTT Topics
+const char* TOPIC_GREEN_STATE = "kvv/lab/led/green/state";
+const char* TOPIC_GREEN_CMD   = "kvv/lab/led/green/cmd";
+const char* TOPIC_RED_STATE   = "kvv/lab/led/red/state";
+const char* TOPIC_RED_CMD     = "kvv/lab/led/red/cmd";
+const char* TOPIC_BTN_GREEN   = "kvv/lab/button/green";
+const char* TOPIC_BTN_RED     = "kvv/lab/button/red";
+
+// Pins
+const int LED_GREEN_PIN = 12;
+const int LED_RED_PIN   = 2;
+const int BTN_GREEN_PIN = 14;
+const int BTN_RED_PIN   = 16;
+
+// Debounce (ms)
+const unsigned long debounceDelay = 200;
+
+// -------------------- Globals --------------------
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+
+volatile bool greenState = false;
+volatile bool redState   = false;
+
+volatile unsigned long lastGreenPress = 0;
+volatile unsigned long lastRedPress = 0;
+
+volatile bool greenEventPending = false;
+volatile bool redEventPending = false;
+
+// -------------------- Helpers --------------------
+void publishState(const char* topic, bool state) {
+  const char* s = state ? "ON" : "OFF";
+  mqtt.publish(topic, s);
+  Serial.print("[STATE] "); Serial.print(topic);
+  Serial.print(" = "); Serial.println(s);
+}
+
+void setLed(int pin, bool on) {
+  // ถ้า LED ต่อแบบ Active LOW ให้สลับ LOW/HIGH
+  digitalWrite(pin, on ? LOW : HIGH);
+}
+
+// -------------------- ISR --------------------
+void IRAM_ATTR handleGreenPress() {
+  unsigned long now = millis();
+  if (now - lastGreenPress > debounceDelay) {
+    greenState = !greenState;
+    setLed(LED_GREEN_PIN, greenState);
+    greenEventPending = true;
+    lastGreenPress = now;
+  }
+}
+
+void IRAM_ATTR handleRedPress() {
+  unsigned long now = millis();
+  if (now - lastRedPress > debounceDelay) {
+    redState = !redState;
+    setLed(LED_RED_PIN, redState);
+    redEventPending = true;
+    lastRedPress = now;
+  }
+}
+
+// -------------------- MQTT --------------------
+void onMqttMsg(char* topic, byte* payload, unsigned int len) {
+  String t = String(topic);
+  String msg;
+  for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
+  msg.trim(); msg.toUpperCase();
+
+  Serial.print("[MQTT] "); Serial.print(t);
+  Serial.print(" = "); Serial.println(msg);
+
+  volatile bool *statePtr = nullptr;
+  int pin = -1;
+  const char* stateTopic = nullptr;
+
+  if (t == TOPIC_GREEN_CMD) {
+    statePtr = &greenState;
+    pin = LED_GREEN_PIN;
+    stateTopic = TOPIC_GREEN_STATE;
+  } else if (t == TOPIC_RED_CMD) {
+    statePtr = &redState;
+    pin = LED_RED_PIN;
+    stateTopic = TOPIC_RED_STATE;
+  } else {
+    Serial.println("[MQTT] Unknown topic");
+    return;
+  }
+
+  if (msg == "ON" || msg == "1" || msg == "TRUE") {
+    *statePtr = true;
+  } else if (msg == "OFF" || msg == "0" || msg == "FALSE") {
+    *statePtr = false;
+  } else if (msg == "TOGGLE") {
+    *statePtr = !(*statePtr);
+  } else {
+    Serial.println("[MQTT] Unknown command");
+    return;
+  }
+
+  setLed(pin, *statePtr);
+  publishState(stateTopic, *statePtr);
+}
+
+void ensureMqtt() {
+  while (!mqtt.connected()) {
+    String cid = "esp32-led-duo-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    Serial.print("[MQTT] Connecting as "); Serial.println(cid);
+    if (mqtt.connect(cid.c_str())) {
+      Serial.println("[MQTT] Connected");
+      mqtt.subscribe(TOPIC_GREEN_CMD);
+      mqtt.subscribe(TOPIC_RED_CMD);
+      publishState(TOPIC_GREEN_STATE, greenState);
+      publishState(TOPIC_RED_STATE, redState);
+    } else {
+      Serial.print("[MQTT] Connect failed, rc="); Serial.println(mqtt.state());
+      delay(1500);
+    }
+  }
+}
+
+// -------------------- Wi-Fi --------------------
+void ensureWifi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  Serial.print("[WiFi] Connecting to "); Serial.println(WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  int dots = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(300);
+    Serial.print('.');
+    if (++dots % 20 == 0) Serial.println();
+  }
+  Serial.println();
+  Serial.print("[WiFi] Connected. IP: "); Serial.println(WiFi.localIP());
+}
+
+// -------------------- Arduino --------------------
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+  pinMode(LED_GREEN_PIN, OUTPUT);
+  pinMode(LED_RED_PIN, OUTPUT);
+  setLed(LED_GREEN_PIN, false);
+  setLed(LED_RED_PIN, false);
+
+  pinMode(BTN_GREEN_PIN, INPUT_PULLUP);
+  pinMode(BTN_RED_PIN, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(BTN_GREEN_PIN), handleGreenPress, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_RED_PIN), handleRedPress, FALLING);
+
+  ensureWifi();
+  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setCallback(onMqttMsg);
+  ensureMqtt();
+
+  Serial.println("System ready. Separate buttons for red/green LED.");
+}
+
+void loop() {
+  ensureWifi();
+  if (!mqtt.connected()) ensureMqtt();
+  mqtt.loop();
+
+  // Handle green button
+  if (greenEventPending) {
+    greenEventPending = false;
+    mqtt.publish(TOPIC_BTN_GREEN, "press");
+    publishState(TOPIC_GREEN_STATE, greenState);
+  }
+
+  // Handle red button
+  if (redEventPending) {
+    redEventPending = false;
+    mqtt.publish(TOPIC_BTN_RED, "press");
+    publishState(TOPIC_RED_STATE, redState);
+  }
+}
