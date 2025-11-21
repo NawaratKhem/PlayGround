@@ -1,0 +1,632 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <ESP32Servo.h>
+
+// WiFi credentials
+const char* ssid = "HotTab";
+const char* password = "haha123ha";
+
+// MQTT Broker settings - HiveMQ Cloud
+const char* mqtt_server = "6efaf3dbba2d4829a5f3864174ae1a59.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;
+const char* mqtt_user = "MyDoorBro";  
+const char* mqtt_password = "MyDoorKnows$22";  
+
+// Device ID
+const char* deviceId = "smartlock001";
+
+// MQTT Topics
+String telemetryTopic = "smartlock/telemetry/" + String(deviceId);
+String commandTopic   = "smartlock/cmd/" + String(deviceId);
+
+// Pin definitions
+#define SERVO_PIN 18
+#define LED_RED 25
+#define LED_GREEN 26
+#define REED_SWITCH_PIN 27
+#define SHOCK_SENSOR_PIN 14
+
+// Joystick and verify button pins
+#define JOYSTICK_VRX 34
+#define JOYSTICK_VRY 35
+#define VERIFY_BUTTON 33
+
+// Servo
+Servo doorLock;
+
+// Continuous rotation servo settings
+const int SERVO_STOP = 90;
+const int SERVO_CW = 0;
+const int SERVO_CCW = 180;
+const int ROTATION_TIME = 500;
+
+// State variables
+bool isLocked = true;
+bool doorClosed = false;
+bool tamperDetected = false;
+
+// Reed switch debounce variables
+unsigned long lastReedDebounce = 0;
+const unsigned long debounceDelay = 50;
+int lastReedState = HIGH;
+int stableReedState = HIGH;
+
+// Shock sensor variables
+volatile unsigned long shockPulseCount = 0;
+volatile unsigned long lastShockTime = 0;
+unsigned long shockWindowStart = 0;
+const unsigned long SHOCK_WINDOW = 2000; 
+const int SHOCK_THRESHOLD = 3; 
+unsigned long tamperCooldown = 0;
+const unsigned long TAMPER_COOLDOWN_TIME = 5000;
+
+// WiFi and MQTT clients
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
+
+// Timing for telemetry
+unsigned long lastTelemetry = 0;
+const unsigned long telemetryInterval = 2000;
+
+// Tamper siren timing
+unsigned long lastSirenTime = 0;
+const unsigned long SIREN_DURATION = 2000;
+const unsigned long SIREN_FLASH_INTERVAL = 100;
+
+// Joystick PIN system
+enum Direction { NONE, UP, DOWN, LEFT, RIGHT };
+const int JOYSTICK_THRESHOLD_LOW = 500;
+const int JOYSTICK_THRESHOLD_HIGH = 3500;
+
+// Debug mode - set to true to see raw joystick values
+const bool JOYSTICK_DEBUG = false;
+unsigned long lastDebugPrint = 0;
+const unsigned long DEBUG_INTERVAL = 500; // Print every 500ms
+
+// PIN storage (4 digits)
+Direction pinBuffer[4] = {NONE, NONE, NONE, NONE};
+int pinBufferIndex = 0;
+
+// Default PIN: UP, DOWN, LEFT, RIGHT
+Direction correctPin[4] = {UP, DOWN, LEFT, RIGHT};
+
+// Joystick state
+Direction lastDirection = NONE;
+bool joystickReturned = true;
+
+// PIN input timeout
+unsigned long lastPinInput = 0;
+const unsigned long PIN_TIMEOUT = 10000; // 10 seconds
+
+// Verify button debounce
+unsigned long lastVerifyDebounce = 0;
+const unsigned long verifyDebounceDelay = 50;
+int lastVerifyState = HIGH;
+int stableVerifyState = HIGH;
+
+// Interrupt Service Routine for shock sensor
+void IRAM_ATTR shockDetected() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastShockTime > 100) {
+    shockPulseCount++;
+    lastShockTime = currentTime;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n=== IoT Smart Door Lock Starting ===");
+
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(REED_SWITCH_PIN, INPUT_PULLUP);
+  pinMode(SHOCK_SENSOR_PIN, INPUT_PULLUP);
+  
+  // Joystick and verify button setup
+  pinMode(JOYSTICK_VRX, INPUT);
+  pinMode(JOYSTICK_VRY, INPUT);
+  pinMode(VERIFY_BUTTON, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(SHOCK_SENSOR_PIN), shockDetected, FALLING);
+  shockWindowStart = millis();
+
+  doorLock.attach(SERVO_PIN);
+  doorLock.write(SERVO_STOP);
+  
+  isLocked = false;
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, HIGH);
+  Serial.println("🔓 Initial state: UNLOCKED");
+
+  setup_wifi();
+
+  espClient.setInsecure();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(mqttCallback);
+  
+  Serial.println("🕹️ Joystick PIN system ready");
+  Serial.println("   Default PIN: UP, DOWN, LEFT, RIGHT");
+}
+
+void setup_wifi() {
+  Serial.println("\nConnecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String message = "";
+  for (int i = 0; i < length; i++) message += (char)payload[i];
+
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("]: ");
+  Serial.println(message);
+
+  StaticJsonDocument<200> doc;
+  DeserializationError error = deserializeJson(doc, message);
+  if (error) {
+    Serial.print("JSON parsing failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (doc.containsKey("lock")) {
+    bool shouldLock = doc["lock"];
+    
+    if (shouldLock && !isLocked) {
+      if (doorClosed) {
+        lockDoor();
+        Serial.println("Door locked via MQTT command");
+      } else {
+        Serial.println("⚠️ Cannot lock - door is OPEN!");
+        showLockFailFeedback();
+      }
+    } else if (!shouldLock && isLocked) {
+      unlockDoor();
+      Serial.println("Door unlocked via MQTT command");
+    }
+  }
+
+  if (doc.containsKey("resetTamper")) {
+    if (doc["resetTamper"] == true) {
+      tamperDetected = false;
+      shockPulseCount = 0;
+      Serial.println("✓ Tamper manually reset via MQTT");
+      publishTelemetry();
+    }
+  }
+  
+  // Change PIN via MQTT: {"setPin": ["UP", "LEFT", "DOWN", "RIGHT"]}
+  if (doc.containsKey("setPin")) {
+    JsonArray newPin = doc["setPin"].as<JsonArray>();
+    if (newPin.size() == 4) {
+      for (int i = 0; i < 4; i++) {
+        String dir = newPin[i].as<String>();
+        dir.toUpperCase();
+        if (dir == "UP") correctPin[i] = UP;
+        else if (dir == "DOWN") correctPin[i] = DOWN;
+        else if (dir == "LEFT") correctPin[i] = LEFT;
+        else if (dir == "RIGHT") correctPin[i] = RIGHT;
+      }
+      Serial.println("✓ PIN updated via MQTT");
+      printCurrentPin();
+    }
+  }
+}
+
+void printCurrentPin() {
+  Serial.print("   Current PIN: ");
+  for (int i = 0; i < 4; i++) {
+    Serial.print(directionToString(correctPin[i]));
+    if (i < 3) Serial.print(", ");
+  }
+  Serial.println();
+}
+
+String directionToString(Direction dir) {
+  switch (dir) {
+    case UP: return "UP";
+    case DOWN: return "DOWN";
+    case LEFT: return "LEFT";
+    case RIGHT: return "RIGHT";
+    default: return "NONE";
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP32Client-" + String(deviceId);
+
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_password)) {
+      Serial.println("connected!");
+      client.subscribe(commandTopic.c_str());
+      Serial.print("Subscribed to: ");
+      Serial.println(commandTopic);
+      publishTelemetry();
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" - trying again in 5s");
+      delay(5000);
+    }
+  }
+}
+
+void lockDoor() {
+  doorLock.write(SERVO_CW);
+  delay(ROTATION_TIME);
+  doorLock.write(SERVO_STOP);
+  
+  isLocked = true;
+  digitalWrite(LED_RED, HIGH);
+  digitalWrite(LED_GREEN, LOW);
+  Serial.println("🔒 DOOR LOCKED");
+  publishTelemetry();
+}
+
+void unlockDoor() {
+  doorLock.write(SERVO_CCW);
+  delay(ROTATION_TIME);
+  doorLock.write(SERVO_STOP);
+  
+  isLocked = false;
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, HIGH);
+  Serial.println("🔓 DOOR UNLOCKED");
+  publishTelemetry();
+}
+
+void showLockFailFeedback() {
+  digitalWrite(LED_RED, HIGH);
+  digitalWrite(LED_GREEN, LOW);
+  
+  int halfRotation = ROTATION_TIME / 2;
+  
+  doorLock.write(SERVO_CW);
+  delay(halfRotation);
+  doorLock.write(SERVO_STOP);
+  
+  delay(300);
+  
+  doorLock.write(SERVO_CCW);
+  delay(halfRotation);
+  doorLock.write(SERVO_STOP);
+  
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, HIGH);
+  
+  Serial.println("↩️ Lock attempt failed - door is open (servo returned)");
+  
+  publishLockFailedTelemetry();
+}
+
+void publishLockFailedTelemetry() {
+  StaticJsonDocument<256> doc;
+  doc["lockStatus"] = "unlocked";
+  doc["doorStatus"] = "open";
+  doc["tamper"] = tamperDetected;
+  doc["shockCount"] = shockPulseCount;
+  doc["timestamp"] = millis();
+  doc["lockFailed"] = "door_open";
+
+  String output;
+  serializeJson(doc, output);
+
+  if (client.publish(telemetryTopic.c_str(), output.c_str())) {
+    Serial.print("📡 Published (lock failed): ");
+    Serial.println(output);
+  } else {
+    Serial.println("❌ Publish failed");
+  }
+}
+
+void runTamperSiren() {
+  Serial.println("🚨 Tamper siren activated!");
+  
+  unsigned long sirenStart = millis();
+  bool redOn = true;
+  
+  while (millis() - sirenStart < SIREN_DURATION) {
+    if (redOn) {
+      digitalWrite(LED_RED, HIGH);
+      digitalWrite(LED_GREEN, LOW);
+    } else {
+      digitalWrite(LED_RED, LOW);
+      digitalWrite(LED_GREEN, HIGH);
+    }
+    redOn = !redOn;
+    delay(SIREN_FLASH_INTERVAL);
+    
+    client.loop();
+  }
+  
+  restoreLedState();
+  
+  lastSirenTime = millis();
+}
+
+void runIncorrectPinSiren() {
+  Serial.println("🚨 Incorrect PIN siren!");
+  
+  unsigned long sirenStart = millis();
+  bool redOn = true;
+  
+  while (millis() - sirenStart < SIREN_DURATION) {
+    if (redOn) {
+      digitalWrite(LED_RED, HIGH);
+      digitalWrite(LED_GREEN, LOW);
+    } else {
+      digitalWrite(LED_RED, LOW);
+      digitalWrite(LED_GREEN, HIGH);
+    }
+    redOn = !redOn;
+    delay(SIREN_FLASH_INTERVAL);
+    
+    client.loop();
+  }
+  
+  restoreLedState();
+}
+
+void restoreLedState() {
+  if (isLocked) {
+    digitalWrite(LED_RED, HIGH);
+    digitalWrite(LED_GREEN, LOW);
+  } else {
+    digitalWrite(LED_RED, LOW);
+    digitalWrite(LED_GREEN, HIGH);
+  }
+}
+
+void handleTamperSiren() {
+  if (tamperDetected) {
+    runTamperSiren();
+  }
+}
+
+// ============ JOYSTICK PIN SYSTEM ============
+
+Direction readJoystickDirection() {
+  int vrx = analogRead(JOYSTICK_VRX);
+  int vry = analogRead(JOYSTICK_VRY);
+  
+  // Debug output to find your joystick's actual values
+  if (JOYSTICK_DEBUG && (millis() - lastDebugPrint > DEBUG_INTERVAL)) {
+    Serial.print("🎮 VRx: ");
+    Serial.print(vrx);
+    Serial.print(" | VRy: ");
+    Serial.println(vry);
+    lastDebugPrint = millis();
+  }
+  
+  // Check if joystick is in center position
+  bool xCenter = (vrx > JOYSTICK_THRESHOLD_LOW && vrx < JOYSTICK_THRESHOLD_HIGH);
+  bool yCenter = (vry > JOYSTICK_THRESHOLD_LOW && vry < JOYSTICK_THRESHOLD_HIGH);
+  
+  if (xCenter && yCenter) {
+    return NONE;
+  }
+  
+  // Determine direction based on which axis is outside center
+  if (vry <= JOYSTICK_THRESHOLD_LOW) return UP;
+  if (vry >= JOYSTICK_THRESHOLD_HIGH) return DOWN;
+  if (vrx <= JOYSTICK_THRESHOLD_LOW) return LEFT;
+  if (vrx >= JOYSTICK_THRESHOLD_HIGH) return RIGHT;
+  
+  return NONE;
+}
+
+void handleJoystickInput() {
+  Direction currentDir = readJoystickDirection();
+  
+  // Check for PIN timeout
+  if (pinBufferIndex > 0 && (millis() - lastPinInput > PIN_TIMEOUT)) {
+    Serial.println("⏱️ PIN input timeout - buffer cleared");
+    clearPinBuffer();
+  }
+  
+  // Joystick returned to center
+  if (currentDir == NONE) {
+    joystickReturned = true;
+    return;
+  }
+  
+  // Register new direction only if joystick returned to center first
+  if (joystickReturned && currentDir != NONE) {
+    joystickReturned = false;
+    lastPinInput = millis();
+    
+    // Shift buffer if full (keep last 4 inputs)
+    if (pinBufferIndex >= 4) {
+      for (int i = 0; i < 3; i++) {
+        pinBuffer[i] = pinBuffer[i + 1];
+      }
+      pinBufferIndex = 3;
+    }
+    
+    pinBuffer[pinBufferIndex] = currentDir;
+    pinBufferIndex++;
+    
+    Serial.print("🕹️ Input registered: ");
+    Serial.print(directionToString(currentDir));
+    Serial.print(" [");
+    for (int i = 0; i < pinBufferIndex; i++) {
+      Serial.print(directionToString(pinBuffer[i]));
+      if (i < pinBufferIndex - 1) Serial.print(", ");
+    }
+    Serial.println("]");
+  }
+}
+
+void handleVerifyButton() {
+  int reading = digitalRead(VERIFY_BUTTON);
+  
+  if (reading != lastVerifyState) {
+    lastVerifyDebounce = millis();
+  }
+  
+  if ((millis() - lastVerifyDebounce) > verifyDebounceDelay) {
+    if (reading != stableVerifyState) {
+      stableVerifyState = reading;
+      
+      // Button pressed (LOW because of INPUT_PULLUP)
+      if (stableVerifyState == LOW) {
+        verifyPin();
+      }
+    }
+  }
+  
+  lastVerifyState = reading;
+}
+
+void verifyPin() {
+  Serial.println("🔐 Verifying PIN...");
+  
+  // Need exactly 4 inputs
+  if (pinBufferIndex < 4) {
+    Serial.println("❌ Not enough digits entered (need 4)");
+    runIncorrectPinSiren();
+    clearPinBuffer();
+    return;
+  }
+  
+  // Compare with correct PIN
+  bool correct = true;
+  for (int i = 0; i < 4; i++) {
+    if (pinBuffer[i] != correctPin[i]) {
+      correct = false;
+      break;
+    }
+  }
+  
+  if (correct) {
+    Serial.println("✅ PIN CORRECT!");
+    if (isLocked) {
+      unlockDoor();
+      Serial.println("🔓 Door unlocked via joystick PIN");
+    } else {
+      Serial.println("ℹ️ Door already unlocked");
+    }
+  } else {
+    Serial.println("❌ PIN INCORRECT!");
+    runIncorrectPinSiren();
+  }
+  
+  clearPinBuffer();
+}
+
+void clearPinBuffer() {
+  for (int i = 0; i < 4; i++) {
+    pinBuffer[i] = NONE;
+  }
+  pinBufferIndex = 0;
+}
+
+// ============ SENSORS ============
+
+void readReedSwitch() {
+  int reedReading = digitalRead(REED_SWITCH_PIN);
+  if (reedReading != lastReedState) lastReedDebounce = millis();
+
+  if ((millis() - lastReedDebounce) > debounceDelay) {
+    if (reedReading != stableReedState) {
+      stableReedState = reedReading;
+      if (stableReedState == LOW && !doorClosed) {
+        doorClosed = true;
+        Serial.println("🚪 Door CLOSED");
+        lockDoor();
+        publishTelemetry();
+      } else if (stableReedState == HIGH && doorClosed) {
+        doorClosed = false;
+        Serial.println("🚪 Door OPEN");
+        
+        if (isLocked) {
+          Serial.println("⚠️ Door opened while locked - unlocking!");
+          unlockDoor();
+        } else {
+          publishTelemetry();
+        }
+      }
+    }
+  }
+  lastReedState = reedReading;
+}
+
+void checkShockSensor() {
+  unsigned long currentTime = millis();
+  if (currentTime - shockWindowStart > SHOCK_WINDOW) {
+    if (!tamperDetected && shockPulseCount > 0) {
+      Serial.print("ℹ️ Shock count reset (below threshold): ");
+      Serial.println(shockPulseCount);
+    }
+    shockPulseCount = 0;
+    shockWindowStart = currentTime;
+  }
+
+  if (shockPulseCount >= SHOCK_THRESHOLD && !tamperDetected) {
+    tamperDetected = true;
+    tamperCooldown = currentTime;
+    Serial.print("⚠️ TAMPER DETECTED! (");
+    Serial.print(shockPulseCount);
+    Serial.println(" shocks detected)");
+    publishTelemetry();
+  }
+
+  if (tamperDetected && (currentTime - tamperCooldown > TAMPER_COOLDOWN_TIME)) {
+    if (currentTime - lastShockTime > TAMPER_COOLDOWN_TIME) {
+      tamperDetected = false;
+      shockPulseCount = 0;
+      Serial.println("✓ Tamper auto-reset (no activity detected)");
+      publishTelemetry();
+    }
+  }
+}
+
+void publishTelemetry() {
+  StaticJsonDocument<256> doc;
+  doc["lockStatus"] = isLocked ? "locked" : "unlocked";
+  doc["doorStatus"] = doorClosed ? "closed" : "open";
+  doc["tamper"] = tamperDetected;
+  doc["shockCount"] = shockPulseCount;
+  doc["timestamp"] = millis();
+
+  String output;
+  serializeJson(doc, output);
+
+  if (client.publish(telemetryTopic.c_str(), output.c_str())) {
+    Serial.print("📡 Published: ");
+    Serial.println(output);
+  } else {
+    Serial.println("❌ Publish failed");
+  }
+}
+
+void loop() {
+  if (!client.connected()) reconnect();
+  client.loop();
+
+  readReedSwitch();
+  checkShockSensor();
+  handleTamperSiren();
+  
+  // Joystick PIN system
+  handleJoystickInput();
+  handleVerifyButton();
+
+  if (millis() - lastTelemetry > telemetryInterval) {
+    publishTelemetry();
+    lastTelemetry = millis();
+  }
+}
