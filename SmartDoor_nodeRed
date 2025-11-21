@@ -1,0 +1,823 @@
+[
+    {
+        "id": "b898152d89d4ceec",
+        "type": "tab",
+        "label": "Smart Door Lock",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "fc88faf25543385f",
+        "type": "mqtt in",
+        "z": "b898152d89d4ceec",
+        "name": "Telemetry In",
+        "topic": "smartlock/telemetry/smartlock001",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "2330e51e98dac2ff",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 100,
+        "wires": [
+            [
+                "93ec9cfab67826ba"
+            ]
+        ]
+    },
+    {
+        "id": "93ec9cfab67826ba",
+        "type": "json",
+        "z": "b898152d89d4ceec",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 310,
+        "y": 100,
+        "wires": [
+            [
+                "fcf35c17d908b7a0",
+                "0ba58c41c78ae247"
+            ]
+        ]
+    },
+    {
+        "id": "0ba58c41c78ae247",
+        "type": "debug",
+        "z": "b898152d89d4ceec",
+        "name": "Telemetry Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 520,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "fcf35c17d908b7a0",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Split Telemetry",
+        "func": "flow.set('lockStatus', msg.payload.lockStatus);\nflow.set('doorStatus', msg.payload.doorStatus);\nflow.set('tamper', msg.payload.tamper);\nflow.set('shockCount', msg.payload.shockCount);\n\nreturn [\n    {payload: msg.payload.lockStatus},\n    {payload: msg.payload.doorStatus},\n    {payload: msg.payload.tamper},\n    {payload: msg.payload.shockCount}\n];",
+        "outputs": 4,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 490,
+        "y": 100,
+        "wires": [
+            [
+                "bca2d653da602214"
+            ],
+            [
+                "49dc9822f71c7b93"
+            ],
+            [
+                "c778734b4723f4d3"
+            ],
+            [
+                "e9bf32c1c7551227",
+                "c8cec9ae0e88b41a"
+            ]
+        ]
+    },
+    {
+        "id": "bca2d653da602214",
+        "type": "ui_text",
+        "z": "b898152d89d4ceec",
+        "group": "ui_group_status",
+        "order": 1,
+        "width": "6",
+        "height": "1",
+        "name": "Lock Status",
+        "label": "🔒 Lock Status",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 700,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "49dc9822f71c7b93",
+        "type": "ui_text",
+        "z": "b898152d89d4ceec",
+        "group": "ui_group_status",
+        "order": 2,
+        "width": "6",
+        "height": "1",
+        "name": "Door Status",
+        "label": "🚪 Door Status",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 700,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "c778734b4723f4d3",
+        "type": "ui_text",
+        "z": "b898152d89d4ceec",
+        "group": "ui_group_status",
+        "order": 3,
+        "width": "6",
+        "height": "1",
+        "name": "Tamper Alert",
+        "label": "⚠️ Tamper Detected",
+        "format": "{{msg.payload ? 'YES - CHECK DOOR!' : 'No'}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 700,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "e9bf32c1c7551227",
+        "type": "ui_gauge",
+        "z": "b898152d89d4ceec",
+        "name": "Shock Count",
+        "group": "ui_group_status",
+        "order": 4,
+        "width": "6",
+        "height": "3",
+        "gtype": "gage",
+        "title": "Shock/Vibration Count",
+        "label": "shocks",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "10",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "2",
+        "seg2": "5",
+        "className": "",
+        "x": 700,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "c8cec9ae0e88b41a",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Format for Chart",
+        "func": "return {\n    payload: msg.payload,\n    topic: 'Shocks'\n};",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 220,
+        "wires": [
+            [
+                "4bd9e7a3310dd7f5"
+            ]
+        ]
+    },
+    {
+        "id": "4bd9e7a3310dd7f5",
+        "type": "ui_chart",
+        "z": "b898152d89d4ceec",
+        "name": "Shock History",
+        "group": "ui_group_status",
+        "order": 5,
+        "width": "6",
+        "height": "4",
+        "label": "Vibration History",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "No data",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "10",
+        "removeOlder": "5",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": 0,
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 700,
+        "y": 220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "f06e369880f7cacd",
+        "type": "ui_button",
+        "z": "b898152d89d4ceec",
+        "name": "Lock Door Button",
+        "group": "ui_group_control",
+        "order": 1,
+        "width": "3",
+        "height": "2",
+        "passthru": false,
+        "label": "🔒 LOCK",
+        "tooltip": "Lock the door (only if closed)",
+        "color": "#ffffff",
+        "bgcolor": "#d32f2f",
+        "className": "",
+        "icon": "lock",
+        "payload": "lock",
+        "payloadType": "str",
+        "topic": "lock",
+        "topicType": "str",
+        "x": 150,
+        "y": 320,
+        "wires": [
+            [
+                "153fa7d4b6291c4a"
+            ]
+        ]
+    },
+    {
+        "id": "2c9b37130d6b5d99",
+        "type": "ui_button",
+        "z": "b898152d89d4ceec",
+        "name": "Unlock Door Button",
+        "group": "ui_group_control",
+        "order": 2,
+        "width": "3",
+        "height": "2",
+        "passthru": false,
+        "label": "🔓 UNLOCK",
+        "tooltip": "Unlock the door",
+        "color": "#ffffff",
+        "bgcolor": "#388e3c",
+        "className": "",
+        "icon": "lock_open",
+        "payload": "unlock",
+        "payloadType": "str",
+        "topic": "unlock",
+        "topicType": "str",
+        "x": 160,
+        "y": 380,
+        "wires": [
+            [
+                "88200ed41f508e71"
+            ]
+        ]
+    },
+    {
+        "id": "153fa7d4b6291c4a",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Create Lock Command",
+        "func": "msg.topic = \"smartlock/cmd/smartlock001\";\nmsg.payload = {\"lock\": true};\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 320,
+        "wires": [
+            [
+                "8c8880cf06202bea",
+                "2679f3ee5945cf65"
+            ]
+        ]
+    },
+    {
+        "id": "88200ed41f508e71",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Create Unlock Command",
+        "func": "msg.topic = \"smartlock/cmd/smartlock001\";\nmsg.payload = {\"lock\": false};\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 380,
+        "wires": [
+            [
+                "8c8880cf06202bea",
+                "2679f3ee5945cf65"
+            ]
+        ]
+    },
+    {
+        "id": "7d2bc1104bf337d8",
+        "type": "ui_button",
+        "z": "b898152d89d4ceec",
+        "name": "Reset Tamper Button",
+        "group": "ui_group_control",
+        "order": 3,
+        "width": "6",
+        "height": "1",
+        "passthru": false,
+        "label": "Reset Tamper Alert",
+        "tooltip": "Reset the tamper detection",
+        "color": "#ffffff",
+        "bgcolor": "#ff9800",
+        "className": "",
+        "icon": "refresh",
+        "payload": "reset",
+        "payloadType": "str",
+        "topic": "reset",
+        "topicType": "str",
+        "x": 160,
+        "y": 440,
+        "wires": [
+            [
+                "3a209d4c8ab405ec"
+            ]
+        ]
+    },
+    {
+        "id": "3a209d4c8ab405ec",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Create Reset Command",
+        "func": "msg.topic = \"smartlock/cmd/smartlock001\";\nmsg.payload = {\"resetTamper\": true};\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 440,
+        "wires": [
+            [
+                "8c8880cf06202bea",
+                "2679f3ee5945cf65"
+            ]
+        ]
+    },
+    {
+        "id": "8c8880cf06202bea",
+        "type": "debug",
+        "z": "b898152d89d4ceec",
+        "name": "Command Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 610,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "2679f3ee5945cf65",
+        "type": "mqtt out",
+        "z": "b898152d89d4ceec",
+        "name": "Send to ESP32",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "2330e51e98dac2ff",
+        "x": 680,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "5d9f5ec0ceda05f3",
+        "type": "ui_dropdown",
+        "z": "b898152d89d4ceec",
+        "name": "PIN Digit 1",
+        "label": "1st",
+        "tooltip": "",
+        "place": "Select",
+        "group": "0c40c62a3d3754d0",
+        "order": 2,
+        "width": "3",
+        "height": "1",
+        "options": [
+            {
+                "label": "⬆️ UP",
+                "value": "UP",
+                "type": "str"
+            },
+            {
+                "label": "⬇️ DOWN",
+                "value": "DOWN",
+                "type": "str"
+            },
+            {
+                "label": "⬅️ LEFT",
+                "value": "LEFT",
+                "type": "str"
+            },
+            {
+                "label": "➡️ RIGHT",
+                "value": "RIGHT",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "digit1",
+        "topicType": "str",
+        "className": "",
+        "x": 130,
+        "y": 560,
+        "wires": [
+            [
+                "f3e181f6ba8e8e8b"
+            ]
+        ]
+    },
+    {
+        "id": "77936877bb7f8c70",
+        "type": "ui_dropdown",
+        "z": "b898152d89d4ceec",
+        "name": "PIN Digit 2",
+        "label": "2nd",
+        "tooltip": "",
+        "place": "Select",
+        "group": "0c40c62a3d3754d0",
+        "order": 3,
+        "width": "3",
+        "height": "1",
+        "options": [
+            {
+                "label": "⬆️ UP",
+                "value": "UP",
+                "type": "str"
+            },
+            {
+                "label": "⬇️ DOWN",
+                "value": "DOWN",
+                "type": "str"
+            },
+            {
+                "label": "⬅️ LEFT",
+                "value": "LEFT",
+                "type": "str"
+            },
+            {
+                "label": "➡️ RIGHT",
+                "value": "RIGHT",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "digit2",
+        "topicType": "str",
+        "className": "",
+        "x": 130,
+        "y": 600,
+        "wires": [
+            [
+                "f3e181f6ba8e8e8b"
+            ]
+        ]
+    },
+    {
+        "id": "348ae46a3d8b5454",
+        "type": "ui_dropdown",
+        "z": "b898152d89d4ceec",
+        "name": "PIN Digit 3",
+        "label": "3rd",
+        "tooltip": "",
+        "place": "Select",
+        "group": "0c40c62a3d3754d0",
+        "order": 4,
+        "width": "3",
+        "height": "1",
+        "options": [
+            {
+                "label": "⬆️ UP",
+                "value": "UP",
+                "type": "str"
+            },
+            {
+                "label": "⬇️ DOWN",
+                "value": "DOWN",
+                "type": "str"
+            },
+            {
+                "label": "⬅️ LEFT",
+                "value": "LEFT",
+                "type": "str"
+            },
+            {
+                "label": "➡️ RIGHT",
+                "value": "RIGHT",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "digit3",
+        "topicType": "str",
+        "className": "",
+        "x": 130,
+        "y": 640,
+        "wires": [
+            [
+                "f3e181f6ba8e8e8b"
+            ]
+        ]
+    },
+    {
+        "id": "42ed2285592cf1d9",
+        "type": "ui_dropdown",
+        "z": "b898152d89d4ceec",
+        "name": "PIN Digit 4",
+        "label": "4th",
+        "tooltip": "",
+        "place": "Select",
+        "group": "0c40c62a3d3754d0",
+        "order": 5,
+        "width": "3",
+        "height": "1",
+        "options": [
+            {
+                "label": "⬆️ UP",
+                "value": "UP",
+                "type": "str"
+            },
+            {
+                "label": "⬇️ DOWN",
+                "value": "DOWN",
+                "type": "str"
+            },
+            {
+                "label": "⬅️ LEFT",
+                "value": "LEFT",
+                "type": "str"
+            },
+            {
+                "label": "➡️ RIGHT",
+                "value": "RIGHT",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "digit4",
+        "topicType": "str",
+        "className": "",
+        "x": 130,
+        "y": 680,
+        "wires": [
+            [
+                "f3e181f6ba8e8e8b"
+            ]
+        ]
+    },
+    {
+        "id": "f3e181f6ba8e8e8b",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Store PIN Digit",
+        "func": "// Store each digit in flow context\nif (msg.topic === 'digit1') flow.set('pin1', msg.payload);\nif (msg.topic === 'digit2') flow.set('pin2', msg.payload);\nif (msg.topic === 'digit3') flow.set('pin3', msg.payload);\nif (msg.topic === 'digit4') flow.set('pin4', msg.payload);\n\n// Update display\nlet p1 = flow.get('pin1') || '?';\nlet p2 = flow.get('pin2') || '?';\nlet p3 = flow.get('pin3') || '?';\nlet p4 = flow.get('pin4') || '?';\n\nlet display = p1 + ' → ' + p2 + ' → ' + p3 + ' → ' + p4;\nreturn {payload: display};",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "// Initialize with default PIN\nflow.set('pin1', 'UP');\nflow.set('pin2', 'DOWN');\nflow.set('pin3', 'LEFT');\nflow.set('pin4', 'RIGHT');",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 620,
+        "wires": [
+            [
+                "26dc2435e341e6b5"
+            ]
+        ]
+    },
+    {
+        "id": "26dc2435e341e6b5",
+        "type": "ui_text",
+        "z": "b898152d89d4ceec",
+        "group": "0c40c62a3d3754d0",
+        "order": 1,
+        "width": "6",
+        "height": "1",
+        "name": "Current PIN Display",
+        "label": "🔑 Current PIN",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 550,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "9aebb450dde2ccbe",
+        "type": "ui_button",
+        "z": "b898152d89d4ceec",
+        "name": "Set PIN Button",
+        "group": "0c40c62a3d3754d0",
+        "order": 6,
+        "width": "6",
+        "height": "1",
+        "passthru": false,
+        "label": "🔐 SET NEW PIN",
+        "tooltip": "Send new PIN to device",
+        "color": "#ffffff",
+        "bgcolor": "#1976d2",
+        "className": "",
+        "icon": "vpn_key",
+        "payload": "set",
+        "payloadType": "str",
+        "topic": "setpin",
+        "topicType": "str",
+        "x": 140,
+        "y": 740,
+        "wires": [
+            [
+                "ca75ec7ec13cfd6c"
+            ]
+        ]
+    },
+    {
+        "id": "ca75ec7ec13cfd6c",
+        "type": "function",
+        "z": "b898152d89d4ceec",
+        "name": "Create PIN Command",
+        "func": "let p1 = flow.get('pin1') || 'UP';\nlet p2 = flow.get('pin2') || 'DOWN';\nlet p3 = flow.get('pin3') || 'LEFT';\nlet p4 = flow.get('pin4') || 'RIGHT';\n\nmsg.topic = 'smartlock/cmd/smartlock001';\nmsg.payload = {\n    setPin: [p1, p2, p3, p4]\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 740,
+        "wires": [
+            [
+                "2679f3ee5945cf65",
+                "8c8880cf06202bea",
+                "dc6d66db16a53314"
+            ]
+        ]
+    },
+    {
+        "id": "dc6d66db16a53314",
+        "type": "ui_toast",
+        "z": "b898152d89d4ceec",
+        "position": "top right",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": true,
+        "outputs": 0,
+        "ok": "OK",
+        "cancel": "",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "PIN Updated Toast",
+        "x": 590,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "92d23284ee38a629",
+        "type": "inject",
+        "z": "b898152d89d4ceec",
+        "name": "Init PIN Display",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "topic": "init",
+        "payload": "UP → DOWN → LEFT → RIGHT",
+        "payloadType": "str",
+        "x": 340,
+        "y": 560,
+        "wires": [
+            [
+                "26dc2435e341e6b5"
+            ]
+        ]
+    },
+    {
+        "id": "2330e51e98dac2ff",
+        "type": "mqtt-broker",
+        "name": "Door center",
+        "broker": "6efaf3dbba2d4829a5f3864174ae1a59.s1.eu.hivemq.cloud",
+        "port": "8883",
+        "tls": "32a8b5e5a8b7747e",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "ui_group_status",
+        "type": "ui_group",
+        "name": "System Status",
+        "tab": "ui_tab_1",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "ui_group_control",
+        "type": "ui_group",
+        "name": "Lock Control",
+        "tab": "ui_tab_1",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "0c40c62a3d3754d0",
+        "type": "ui_group",
+        "name": "PIN Settings",
+        "tab": "ui_tab_1",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "32a8b5e5a8b7747e",
+        "type": "tls-config",
+        "name": "",
+        "cert": "",
+        "key": "",
+        "ca": "",
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "",
+        "verifyservercert": true,
+        "alpnprotocol": ""
+    },
+    {
+        "id": "ui_tab_1",
+        "type": "ui_tab",
+        "name": "Smart Lock",
+        "icon": "lock",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "f27dd64927133da0",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-dashboard": "3.6.6"
+        }
+    }
+]
